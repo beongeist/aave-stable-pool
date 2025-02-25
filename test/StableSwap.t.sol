@@ -29,8 +29,8 @@ contract StableSwapTest is Test, Deployers, Fixtures {
 
         // Deploy the hook to an address with the correct flags
         address flags = address(
-            uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG)
-                ^ (0x4444 << 144) // Namespace the hook to avoid collisions
+            uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG )
+                ^ (0x4444 << 144) // Namespace the hook to avoid collisions also removed | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
         );
         bytes memory constructorArgs = abi.encode(manager); //Add all the necessary constructor arguments from the hook
         deployCodeTo("StableSwap.sol:StableSwap", constructorArgs, flags);
@@ -41,11 +41,45 @@ contract StableSwapTest is Test, Deployers, Fixtures {
         manager.initialize(key, SQRT_PRICE_1_1);
 
         // Seed liquidity
-        IERC20(Currency.unwrap(currency0)).approve(address(hook), 1000e18);
-        IERC20(Currency.unwrap(currency1)).approve(address(hook), 1000e18);
+        IERC20(Currency.unwrap(currency0)).approve(address(hook), type(uint256).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(hook), type(uint256).max);
 
-
+        IERC20(Currency.unwrap(currency0)).transfer(address(hook), 1000e18);
+        IERC20(Currency.unwrap(currency1)).transfer(address(hook), 1000e18);
     }
+
+    function test_exactInputSwap() public {
+        uint256 amount = 100e18;
+
+        // Approve tokens for swap
+        IERC20(Currency.unwrap(currency0)).approve(address(manager), amount);
+
+        // Print balances before swap
+        console.log("Contract balance0:", IERC20(Currency.unwrap(currency0)).balanceOf(address(hook)));
+        console.log("Contract balance1:", IERC20(Currency.unwrap(currency1)).balanceOf(address(hook)));
+        console.log("User balance0:", IERC20(Currency.unwrap(currency0)).balanceOf(address(this)));
+        console.log("User balance1:", IERC20(Currency.unwrap(currency1)).balanceOf(address(this)));
+
+        uint256 balance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(this));
+        uint256 balance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(this));
+
+        // Execute swap (zeroForOne = true, meaning selling currency0 for currency1)
+        swap(key, true, -int256(amount), ZERO_BYTES);
+
+        uint256 balance0After = IERC20(Currency.unwrap(currency0)).balanceOf(address(this));
+        uint256 balance1After = IERC20(Currency.unwrap(currency1)).balanceOf(address(this));
+
+        // Print balances after swap
+        console.log("Contract balance0 after:", IERC20(Currency.unwrap(currency0)).balanceOf(address(hook)));
+        console.log("Contract balance1 after:", IERC20(Currency.unwrap(currency1)).balanceOf(address(hook)));
+        console.log("User balance0 after:", IERC20(Currency.unwrap(currency0)).balanceOf(address(this)));
+        console.log("User balance1 after:", IERC20(Currency.unwrap(currency1)).balanceOf(address(this)));
+
+        // Ensure we spent currency0 and received currency1
+        assertEq(balance0Before - balance0After, amount);
+        assertEq(balance1After - balance1Before, amount);
+    }
+
 
 
 }
