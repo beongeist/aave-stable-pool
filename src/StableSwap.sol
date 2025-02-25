@@ -7,21 +7,25 @@ import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
-import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
+import { BalanceDelta, toBalanceDelta } from "v4-core/src/types/BalanceDelta.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/src/types/BeforeSwapDelta.sol";
 import { BeforeSwapDelta, toBeforeSwapDelta } from "v4-core/src/types/BeforeSwapDelta.sol";
 
 
 import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {CurrencySettler} from "v4-core/test/utils/CurrencySettler.sol";
 import { Currency, CurrencyLibrary } from "v4-core/src/types/Currency.sol";
 import {SafeCast} from "v4-core/src/libraries/SafeCast.sol";
 
 
 contract StableSwap is BaseHook {
     using SafeCast for uint256;
-    
+    using CurrencySettler for Currency;
+
     // Constructor to initialize the contract with a PoolManager
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
+        poolManager = _poolManager;
+    }
 
     // Permissions for this hook
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -29,14 +33,14 @@ contract StableSwap is BaseHook {
             beforeInitialize: false,
             afterInitialize: false,
             beforeAddLiquidity: false,
-            afterAddLiquidity: false,
+            afterAddLiquidity: true,
             beforeRemoveLiquidity: false,
             afterRemoveLiquidity: false,
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
             afterDonate: false,
-            beforeSwapReturnDelta: true,
+            beforeSwapReturnDelta: false,
             afterSwapReturnDelta: false,
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
@@ -65,6 +69,7 @@ contract StableSwap is BaseHook {
 
         uint256 amount = isExactInput ? uint256(-params.amountSpecified) : uint256(params.amountSpecified);
 
+        /*
         // Instead of minting/burning, transfer the tokens to/from the contract directly
         if (isExactInput) {
             // Transfer input token from the user to the contract
@@ -79,6 +84,18 @@ contract StableSwap is BaseHook {
             // Transfer output token from the user to the contract
             IERC20(Currency.unwrap(outputCurrency)).transferFrom(msg.sender, address(this), amount);
         }
+        */
+
+        // poolManager.mint(address(this), inputCurrency.toId(), amount);
+        // poolManager.burn(address(this), outputCurrency.toId(), amount);
+
+        poolManager.take(inputCurrency, address(this), amount);
+        outputCurrency.settle(
+            poolManager,
+            address(this),
+            amount,
+            false
+        );
 
         // Return the delta for the swap accounting
         int128 tokenAmount = amount.toInt128();
@@ -90,5 +107,18 @@ contract StableSwap is BaseHook {
         return (BaseHook.beforeSwap.selector, returnDelta, 0);
     }
 
+    // steal liquidity added to the pool, and hold those tokens in the hook
+    function _afterAddLiquidity(
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata,
+        BalanceDelta,
+        BalanceDelta,
+        bytes calldata
+    ) internal override returns (bytes4, BalanceDelta) {
+        key.currency0
+
+        return (BaseHook.afterAddLiquidity.selector, toBalanceDelta(1, 1));
+    }
 
 }

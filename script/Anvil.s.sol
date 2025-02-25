@@ -14,7 +14,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Constants} from "v4-core/src/../test/utils/Constants.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {CurrencyLibrary, Currency} from "v4-core/src/types/Currency.sol";
-import {Counter} from "../src/Counter.sol";
+import {StableSwap} from "../src/StableSwap.sol";
 import {HookMiner} from "v4-periphery/src/utils/HookMiner.sol";
 import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "v4-periphery/src/PositionManager.sol";
@@ -43,20 +43,18 @@ contract CounterScript is Script, DeployPermit2 {
 
         // hook contracts must have specific flags encoded in the address
         uint160 permissions = uint160(
-            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
-                | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
-        );
+            Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG | Hooks.AFTER_ADD_LIQUIDITY_RETURNS_DELTA_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG        );
 
         // Mine a salt that will produce a hook address with the correct permissions
         (address hookAddress, bytes32 salt) =
-            HookMiner.find(CREATE2_DEPLOYER, permissions, type(Counter).creationCode, abi.encode(address(manager)));
+            HookMiner.find(CREATE2_DEPLOYER, permissions, type(StableSwap).creationCode, abi.encode(address(manager)));
 
         // ----------------------------- //
         // Deploy the hook using CREATE2 //
         // ----------------------------- //
         vm.broadcast();
-        Counter counter = new Counter{salt: salt}(manager);
-        require(address(counter) == hookAddress, "CounterScript: hook address mismatch");
+        StableSwap ss = new StableSwap{salt: salt}(manager);
+        require(address(ss) == hookAddress, "CounterScript: hook address mismatch");
 
         // Additional helpers for interacting with the pool
         vm.startBroadcast();
@@ -66,7 +64,7 @@ contract CounterScript is Script, DeployPermit2 {
 
         // test the lifecycle (create pool, add liquidity, swap)
         vm.startBroadcast();
-        testLifecycle(address(counter));
+        testLifecycle(address(ss));
         vm.stopBroadcast();
     }
 
@@ -119,7 +117,7 @@ contract CounterScript is Script, DeployPermit2 {
         token1.mint(msg.sender, 100_000 ether);
 
         // initialize the pool
-        int24 tickSpacing = 60;
+        int24 tickSpacing = 1;
         PoolKey memory poolKey =
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, tickSpacing, IHooks(hook));
         manager.initialize(poolKey, Constants.SQRT_PRICE_1_1);
@@ -136,6 +134,9 @@ contract CounterScript is Script, DeployPermit2 {
         int24 tickLower = TickMath.minUsableTick(tickSpacing);
         int24 tickUpper = TickMath.maxUsableTick(tickSpacing);
         _exampleAddLiquidity(poolKey, tickLower, tickUpper);
+
+        // token0.mint(hook, 100 ether);
+        // token1.mint(hook, 100 ether);
 
         // swap some tokens
         _exampleSwap(poolKey);
