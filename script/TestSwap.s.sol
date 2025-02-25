@@ -16,7 +16,7 @@ import { PoolKey } from "v4-core/src/types/PoolKey.sol";
 import { Currency } from "v4-core/src/types/Currency.sol";
 // import { IHooks } from "v4-core/src/interfaces/IHooks.sol";
 
-import { PolHook } from "../src/PolHook.sol";
+import { StableSwap } from "../src/StableSwap.sol";
 
 contract Example {
     using StateLibrary for PoolManager;
@@ -89,7 +89,7 @@ contract TestSwapScript is Script {
             0x000000000022D473030F116dDEE9F6B43aC78BA3  // permit2
         );
 
-        address token0 = address(0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063);
+        address token0 = address(0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359);
         address token1 = address(0xc2132D05D31c914a87C6611C10748AEb04B58e8F);
 
         example.approveTokenWithPermit2(
@@ -101,15 +101,15 @@ contract TestSwapScript is Script {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(token0),
             currency1: Currency.wrap(token1),
-            fee: 100, // TODO: Replace with actual fee tier
+            fee: 3000, // TODO: Replace with actual fee tier
             tickSpacing: 1, // TODO: Replace with actual tick spacing
-            hooks: PolHook(0x083Be93d93Fd13F2Bbd431e836F8aB07df830088) // TODO: Replace with actual hooks contract if needed
+            hooks: StableSwap(0x52f052d2411735287989461721f4B49A13d65888) // TODO: Replace with actual hooks contract if needed
         });
 
-        uint128 amountIn = 1 * 10**18;
+        uint128 amountIn = 1e5;
         
         // Minimum 2 tokens with 18 decimals
-        uint128 minAmountOut = 1 * 10**6;
+        uint128 minAmountOut = 1e5;
 
         IERC20(token0).transfer(address(example), amountIn);
 
