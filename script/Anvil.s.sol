@@ -38,22 +38,22 @@ contract CounterScript is Script, DeployPermit2 {
     function setUp() public {}
 
     function run() public {
-        vm.broadcast();
+        // vm.broadcast();
         manager = deployPoolManager();
 
         // hook contracts must have specific flags encoded in the address
         uint160 permissions = uint160(
-            Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG | Hooks.AFTER_ADD_LIQUIDITY_RETURNS_DELTA_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG        );
+            Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG);
 
         // Mine a salt that will produce a hook address with the correct permissions
         (address hookAddress, bytes32 salt) =
-            HookMiner.find(CREATE2_DEPLOYER, permissions, type(StableSwap).creationCode, abi.encode(address(manager)));
+            HookMiner.find(CREATE2_DEPLOYER, permissions, type(StableSwap).creationCode, abi.encode(address(manager), address(0x794a61358D6845594F94dc1DB02A252b5b4814aD)));
 
         // ----------------------------- //
         // Deploy the hook using CREATE2 //
         // ----------------------------- //
         vm.broadcast();
-        StableSwap ss = new StableSwap{salt: salt}(manager);
+        StableSwap ss = new StableSwap{salt: salt}(manager, address(0x794a61358D6845594F94dc1DB02A252b5b4814aD));
         require(address(ss) == hookAddress, "CounterScript: hook address mismatch");
 
         // Additional helpers for interacting with the pool
@@ -72,7 +72,8 @@ contract CounterScript is Script, DeployPermit2 {
     // Helpers
     // -----------------------------------------------------------
     function deployPoolManager() internal returns (IPoolManager) {
-        return IPoolManager(address(new PoolManager(address(0))));
+        // return IPoolManager(address(new PoolManager(address(0))));
+        return IPoolManager(address(0x67366782805870060151383F4BbFF9daB53e5cD6));
     }
 
     function deployRouters(IPoolManager _manager)
@@ -99,7 +100,8 @@ contract CounterScript is Script, DeployPermit2 {
         permit2.approve(Currency.unwrap(currency), address(_posm), type(uint160).max, type(uint48).max);
     }
 
-    function deployTokens() internal returns (MockERC20 token0, MockERC20 token1) {
+    function deployTokens() internal returns (IERC20 token0, IERC20 token1) {
+        /*
         MockERC20 tokenA = new MockERC20("MockA", "A", 18);
         MockERC20 tokenB = new MockERC20("MockB", "B", 18);
         if (uint160(address(tokenA)) < uint160(address(tokenB))) {
@@ -109,17 +111,20 @@ contract CounterScript is Script, DeployPermit2 {
             token0 = tokenB;
             token1 = tokenA;
         }
+        */
+       token0 = IERC20(address(0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359));
+       token1 = IERC20(address(0xc2132D05D31c914a87C6611C10748AEb04B58e8F));
     }
 
     function testLifecycle(address hook) internal {
-        (MockERC20 token0, MockERC20 token1) = deployTokens();
-        token0.mint(msg.sender, 100_000 ether);
-        token1.mint(msg.sender, 100_000 ether);
+        (IERC20 token0, IERC20 token1) = deployTokens();
 
         // initialize the pool
         int24 tickSpacing = 1;
         PoolKey memory poolKey =
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, tickSpacing, IHooks(hook));
+        token0.approve(address(hook), 1e6);
+        token1.approve(address(hook), 1e6);
         manager.initialize(poolKey, Constants.SQRT_PRICE_1_1);
 
         // approve the tokens to the routers
@@ -131,16 +136,25 @@ contract CounterScript is Script, DeployPermit2 {
         approvePosmCurrency(posm, Currency.wrap(address(token1)));
 
         // add full range liquidity to the pool
-        int24 tickLower = TickMath.minUsableTick(tickSpacing);
-        int24 tickUpper = TickMath.maxUsableTick(tickSpacing);
-        _exampleAddLiquidity(poolKey, tickLower, tickUpper);
+        // int24 tickLower = TickMath.minUsableTick(tickSpacing);
+        // int24 tickUpper = TickMath.maxUsableTick(tickSpacing);
+        // _exampleAddLiquidity(poolKey, tickLower, tickUpper);
+        // addCustomHookLiquidity(hook);
 
         // token0.mint(hook, 100 ether);
         // token1.mint(hook, 100 ether);
 
         // swap some tokens
         _exampleSwap(poolKey);
+
+        // print aave token balances
+        uint256 aaveToken0Balance = IERC20(address(0xA4D94019934D8333Ef880ABFFbF2FDd611C762BD)).balanceOf(address(hook));
+        uint256 aaveToken1Balance = IERC20(address(0x6ab707Aca953eDAeFBc4fD23bA73294241490620)).balanceOf(address(hook));
+        console.log("aaveToken0Balance: %s", aaveToken0Balance);
+        console.log("aaveToken1Balance: %s", aaveToken1Balance);
     }
+
+    // function addCustomHookLiquidity()
 
     function _exampleAddLiquidity(PoolKey memory poolKey, int24 tickLower, int24 tickUpper) internal {
         // provisions full-range liquidity twice. Two different periphery contracts used for example purposes.
@@ -153,7 +167,7 @@ contract CounterScript is Script, DeployPermit2 {
 
     function _exampleSwap(PoolKey memory poolKey) internal {
         bool zeroForOne = true;
-        int256 amountSpecified = 1 ether;
+        int256 amountSpecified = 1e5;
         IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
             zeroForOne: zeroForOne,
             amountSpecified: amountSpecified,
