@@ -103,7 +103,7 @@ contract TestSwapScript is Script {
             currency1: Currency.wrap(token1),
             fee: 3000, // TODO: Replace with actual fee tier
             tickSpacing: 1, // TODO: Replace with actual tick spacing
-            hooks: StableSwap(0x52f052d2411735287989461721f4B49A13d65888) // TODO: Replace with actual hooks contract if needed
+            hooks: StableSwap(0xD9F47BAc4019FC199cb5D769CA2c2F501A999888) // TODO: Replace with actual hooks contract if needed
         });
 
         uint128 amountIn = 1e5;

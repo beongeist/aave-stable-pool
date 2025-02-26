@@ -6,7 +6,7 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {StableSwap} from "../src/StableSwap.sol";
 
 contract DepositLP is Script {
-    address public constant STABLE_SWAP = 0x52f052d2411735287989461721f4B49A13d65888; //Deployed Contract
+    address public constant STABLE_SWAP = 0xD9F47BAc4019FC199cb5D769CA2c2F501A999888; //Deployed Contract
     address public constant USDC = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359; //USDC Address on Poly
     address public constant USDT = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F; // USDT address on Polygon
     uint256 public constant AMOUNT_USDC = 1e6; // Amount being added to the pool

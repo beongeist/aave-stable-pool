@@ -17,11 +17,14 @@ contract DeployInitializeHook is Script {
     function setUp() public {}
 
     function run() public {
-        /*
+
+
         // hook contracts must have specific flags encoded in the address
         uint160 flags = uint160(
             Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
         );
+
+        address CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
         // Mine a salt that will produce a hook address with the correct flags
         bytes memory constructorArgs = abi.encode(IPoolManager(address(0x67366782805870060151383F4BbFF9daB53e5cD6)), address(0x794a61358D6845594F94dc1DB02A252b5b4814aD)); // poolmanager
@@ -32,9 +35,9 @@ contract DeployInitializeHook is Script {
         vm.broadcast();
         StableSwap ss = new StableSwap{salt: salt}(IPoolManager(address(0x67366782805870060151383F4BbFF9daB53e5cD6)), address(0x794a61358D6845594F94dc1DB02A252b5b4814aD));
         require(address(ss) == hookAddress, "StableSwap: hook address mismatch");
-*/
 
-        address hookAddress = 0x52f052d2411735287989461721f4B49A13d65888;
+
+        // address hookAddress = 0x52f052d2411735287989461721f4B49A13d65888;
 
         IERC20 token0 = IERC20(0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359);
         IERC20 token1 = IERC20(0xc2132D05D31c914a87C6611C10748AEb04B58e8F);

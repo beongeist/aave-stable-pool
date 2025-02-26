@@ -1,5 +1,5 @@
-# v4-template
-### **A template for writing Uniswap v4 Hooks 🦄**
+# StableSwap Hook
+### **Uniswap v4 Hooks with StableSwap 🦄**
 
 [`Use this Template`](https://github.com/uniswapfoundation/v4-template/generate)
 
@@ -7,7 +7,7 @@
 2. The test template [Counter.t.sol](test/Counter.t.sol) preconfigures the v4 pool manager, test tokens, and test liquidity.
 
 <details>
-<summary>Updating to v4-template:latest</summary>
+<summary>Updating to StableSwap Template:latest</summary>
 
 This template is actively maintained -- you can update the v4 dependencies, scripts, and helpers: 
 ```bash

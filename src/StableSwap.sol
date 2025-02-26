@@ -21,11 +21,15 @@ contract StableSwap is BaseHook {
     using SafeCast for uint256;
     using CurrencySettler for Currency;
 
-    uint256 public totalToken0ShareAmount = 1e18;
-    uint256 public totalToken1ShareAmount = 1e18;
+    // uint256 public totalToken0ShareAmount = 1e18;
+    // uint256 public totalToken1ShareAmount = 1e18;
 
-    mapping (address => uint256) token0Shares;
-    mapping (address => uint256) token1Shares;
+    uint256 public totaltokenSharesAmount = 2e18;
+
+    // mapping (address => uint256) token0Shares;
+    // mapping (address => uint256) token1Shares;
+
+    public mapping (address => uint256) tokenShares;
 
     address public token0;
     address public token1;
@@ -74,8 +78,11 @@ contract StableSwap is BaseHook {
         // Transfer initial liquidity from deployer (msg.sender) to the contract
         // Then, also initialize the first LP shares
         // totalToken0ShareAmount is pre-initialized to 1
-        token0Shares[sender] = 1e18;
-        token1Shares[sender] = 1e18;
+        
+        // token0Shares[sender] = 1e18;
+        // token1Shares[sender] = 1e18;
+        tokenShares[sender] = 2e18;
+
         IERC20(token0).transferFrom(sender, address(this), initialToken0Amount);
         IERC20(token1).transferFrom(sender, address(this), initialToken1Amount);
         depositToAave(initialToken0Amount, initialToken1Amount);
@@ -170,15 +177,20 @@ contract StableSwap is BaseHook {
     function deposit(uint256 token0Amount, uint256 token1Amount) public {
         (uint256 totalToken0Amount, uint256 totalToken1Amount) = getAaveTokenBalances();
 
-        // Handle minting new shares for token0
-        uint256 newToken0ShareAmount = totalToken0ShareAmount * token0Amount / totalToken0Amount;
-        totalToken0ShareAmount += newToken0ShareAmount;
-        token0Shares[msg.sender] += newToken0ShareAmount;
+        // // Handle minting new shares for token0
+        // uint256 newToken0ShareAmount = totalToken0ShareAmount * token0Amount / totalToken0Amount;
+        // totalToken0ShareAmount += newToken0ShareAmount;
+        // token0Shares[msg.sender] += newToken0ShareAmount;
 
-        // Handle minting new shares for token1
-        uint256 newToken1ShareAmount = totalToken1ShareAmount * token1Amount / totalToken1Amount;
-        totalToken1ShareAmount += newToken1ShareAmount;
-        token1Shares[msg.sender] += newToken1ShareAmount;
+        // // Handle minting new shares for token1
+        // uint256 newToken1ShareAmount = totalToken1ShareAmount * token1Amount / totalToken1Amount;
+        // totalToken1ShareAmount += newToken1ShareAmount;
+        // token1Shares[msg.sender] += newToken1ShareAmount;
+
+        uint256 newTokenShareAmount = totaltokenSharesAmount * (token0Amount + token1Amount) / (totalToken0Amount + totalToken1Amount);
+        totaltokenSharesAmount += newTokenShareAmount;
+        tokenShares[msg.sender] += newTokenShareAmount;
+
 
         IERC20(token0).transferFrom(msg.sender, address(this), token0Amount);
         IERC20(token1).transferFrom(msg.sender, address(this), token1Amount);
@@ -190,15 +202,19 @@ contract StableSwap is BaseHook {
     function withdraw(uint256 token0Amount, uint256 token1Amount) public {
         (uint256 totalToken0Amount, uint256 totalToken1Amount) = getAaveTokenBalances();
 
-        // Handle burning shares for token0
-        uint256 newToken0ShareAmount = totalToken0ShareAmount * token0Amount / totalToken0Amount;
-        totalToken0ShareAmount -= newToken0ShareAmount;
-        token0Shares[msg.sender] -= newToken0ShareAmount;
+        // // Handle burning shares for token0
+        // uint256 newToken0ShareAmount = totalToken0ShareAmount * token0Amount / totalToken0Amount;
+        // totalToken0ShareAmount -= newToken0ShareAmount;
+        // token0Shares[msg.sender] -= newToken0ShareAmount;
 
-        // Handle burning shares for token1
-        uint256 newToken1ShareAmount = totalToken1ShareAmount * token1Amount / totalToken1Amount;
-        totalToken1ShareAmount -= newToken1ShareAmount;
-        token1Shares[msg.sender] -= newToken1ShareAmount;
+        // // Handle burning shares for token1
+        // uint256 newToken1ShareAmount = totalToken1ShareAmount * token1Amount / totalToken1Amount;
+        // totalToken1ShareAmount -= newToken1ShareAmount;
+        // token1Shares[msg.sender] -= newToken1ShareAmount;
+
+        uint256 newTokenShareAmount = totaltokenSharesAmount * (token0Amount + token1Amount) / (totalToken0Amount + totalToken1Amount);
+        totaltokenSharesAmount -= newTokenShareAmount;
+        tokenShares[msg.sender] -= newTokenShareAmount;
 
         withdrawFromAave(token0Amount, token1Amount);
 
