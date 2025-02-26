@@ -21,15 +21,9 @@ contract StableSwap is BaseHook {
     using SafeCast for uint256;
     using CurrencySettler for Currency;
 
-    // uint256 public totalToken0ShareAmount = 1e18;
-    // uint256 public totalToken1ShareAmount = 1e18;
+    uint256 public totaltokenSharesAmount = 1e18;
 
-    uint256 public totaltokenSharesAmount = 2e18;
-
-    // mapping (address => uint256) token0Shares;
-    // mapping (address => uint256) token1Shares;
-
-    public mapping (address => uint256) tokenShares;
+    mapping (address => uint256) public tokenShares;
 
     address public token0;
     address public token1;
@@ -40,6 +34,10 @@ contract StableSwap is BaseHook {
 
     error OnlyHookLiquidity();
     error AlreadyInitialized();
+
+    /* Utilities for LP rewards */
+    uint256 public totalDeposited; // counter for total deposits of *base* tokens
+    uint256 public lastInterestAccured; // last time we swapped, how much interest had the pool earned?
 
     // Constructor to initialize the contract with a PoolManager
     constructor(
@@ -81,7 +79,7 @@ contract StableSwap is BaseHook {
         
         // token0Shares[sender] = 1e18;
         // token1Shares[sender] = 1e18;
-        tokenShares[sender] = 2e18;
+        tokenShares[sender] = 1e18;
 
         IERC20(token0).transferFrom(sender, address(this), initialToken0Amount);
         IERC20(token1).transferFrom(sender, address(this), initialToken1Amount);
@@ -132,43 +130,65 @@ contract StableSwap is BaseHook {
 
         bool isExactInput = params.amountSpecified < 0;
 
-        uint256 amount = isExactInput ? uint256(-params.amountSpecified) : uint256(params.amountSpecified);
+        uint256 amountIn = isExactInput ? uint256(-params.amountSpecified) : uint256(params.amountSpecified);
+        uint256 amountOut = amountIn * 9995 / 10000; // 0.05% fee
+
+        // Calculate swapping reward based on how much interest the pool has accrued
+        (uint256 totalToken0Amount, uint256 totalToken1Amount) = getAaveTokenBalances();
+        uint256 totalPoolBalance = totalToken0Amount + totalToken1Amount;
+        // We calculate how much interest the pool has earned since the last swap
+        // This will be used to reward the swapper. However, it is possible that the deltaInterestAccrued
+        // is negative: if a LP withdrew some of their position (which includes interest)
+        int256 deltaInterestAccrued = (totalPoolBalance - totalDeposited).toInt128() - lastInterestAccured.toInt128();
+        // If the pool has earned interest since the last swap, reward the swapper
+        // proportional to their swap size relative to the pool balance
+        // with 10% of the delta interest accured. We order these multiplication and division
+        // to avoid overflow
+        if (deltaInterestAccrued > 0) {
+            uint256 reward = uint256(deltaInterestAccrued) * amountIn / (10 * totalPoolBalance);
+            amountOut += reward;
+            lastInterestAccured += uint256(deltaInterestAccrued) - reward;
+        } else {
+            // If the pool has lost interest since the last swap, we need to subtract the loss
+            // for proper accounting of lastInterestAccured so next swap works correctly
+            lastInterestAccured = totalPoolBalance - totalDeposited;
+        }
 
         // Take the entire input amount from the user
-        poolManager.take(inputCurrency, address(this), amount);
+        poolManager.take(inputCurrency, address(this), amountIn);
         
         // Withdraw equal amount from the Aave pool, and deposit the same amount in other token
         if (params.zeroForOne) {
-            withdrawFromAave(0, amount);
-            depositToAave(amount, 0);
+            withdrawFromAave(0, amountOut);
+            depositToAave(amountIn, 0);
         } else {
-            withdrawFromAave(amount, 0);
-            depositToAave(0, amount);
+            withdrawFromAave(amountOut, 0);
+            depositToAave(0, amountIn);
         }
 
-        // Transfer equal output amount to the user        
+        // Transfer output amount to the poolManager, so that it can be sent to the user
+        // at the end of the transaction        
         outputCurrency.settle(
             poolManager,
             address(this),
-            amount,
+            amountOut,
             false
         );
 
-        // Return the delta for the swap accounting
-        int128 tokenAmount = amount.toInt128();
-
         BeforeSwapDelta returnDelta =
-            isExactInput ? toBeforeSwapDelta(tokenAmount, -tokenAmount) : toBeforeSwapDelta(-tokenAmount, tokenAmount);
+            isExactInput ? toBeforeSwapDelta(amountIn.toInt128(), -amountOut.toInt128()) : toBeforeSwapDelta(-amountIn.toInt128(), amountOut.toInt128());
+
+        totalDeposited = totalDeposited + amountIn - amountOut;
 
         return (BaseHook.beforeSwap.selector, returnDelta, 0);
     }
 
     /* Block native liquidity provision */
     function _beforeAddLiquidity(
-        address sender,
-        PoolKey calldata key,
-        IPoolManager.ModifyLiquidityParams calldata params,
-        bytes calldata hookData
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        bytes calldata
     ) internal override onlyPoolManager returns (bytes4) {
         revert OnlyHookLiquidity();
     }
@@ -177,40 +197,21 @@ contract StableSwap is BaseHook {
     function deposit(uint256 token0Amount, uint256 token1Amount) public {
         (uint256 totalToken0Amount, uint256 totalToken1Amount) = getAaveTokenBalances();
 
-        // // Handle minting new shares for token0
-        // uint256 newToken0ShareAmount = totalToken0ShareAmount * token0Amount / totalToken0Amount;
-        // totalToken0ShareAmount += newToken0ShareAmount;
-        // token0Shares[msg.sender] += newToken0ShareAmount;
-
-        // // Handle minting new shares for token1
-        // uint256 newToken1ShareAmount = totalToken1ShareAmount * token1Amount / totalToken1Amount;
-        // totalToken1ShareAmount += newToken1ShareAmount;
-        // token1Shares[msg.sender] += newToken1ShareAmount;
-
         uint256 newTokenShareAmount = totaltokenSharesAmount * (token0Amount + token1Amount) / (totalToken0Amount + totalToken1Amount);
         totaltokenSharesAmount += newTokenShareAmount;
         tokenShares[msg.sender] += newTokenShareAmount;
-
 
         IERC20(token0).transferFrom(msg.sender, address(this), token0Amount);
         IERC20(token1).transferFrom(msg.sender, address(this), token1Amount);
 
         depositToAave(token0Amount, token1Amount);
+
+        totalDeposited += token0Amount + token1Amount;
     }
 
     /* Withdraw */
     function withdraw(uint256 token0Amount, uint256 token1Amount) public {
         (uint256 totalToken0Amount, uint256 totalToken1Amount) = getAaveTokenBalances();
-
-        // // Handle burning shares for token0
-        // uint256 newToken0ShareAmount = totalToken0ShareAmount * token0Amount / totalToken0Amount;
-        // totalToken0ShareAmount -= newToken0ShareAmount;
-        // token0Shares[msg.sender] -= newToken0ShareAmount;
-
-        // // Handle burning shares for token1
-        // uint256 newToken1ShareAmount = totalToken1ShareAmount * token1Amount / totalToken1Amount;
-        // totalToken1ShareAmount -= newToken1ShareAmount;
-        // token1Shares[msg.sender] -= newToken1ShareAmount;
 
         uint256 newTokenShareAmount = totaltokenSharesAmount * (token0Amount + token1Amount) / (totalToken0Amount + totalToken1Amount);
         totaltokenSharesAmount -= newTokenShareAmount;
@@ -220,6 +221,8 @@ contract StableSwap is BaseHook {
 
         IERC20(token0).transfer(msg.sender, token0Amount);
         IERC20(token1).transfer(msg.sender, token1Amount);
+
+        totalDeposited -= token0Amount + token1Amount;
     }
 
     /* UTILITIES */
@@ -243,6 +246,17 @@ contract StableSwap is BaseHook {
             IERC20(aaveToken0).balanceOf(address(this)),
             IERC20(aaveToken1).balanceOf(address(this))
         );
+    }
+
+    function emergencyWithdraw() public {
+        if (msg.sender != address(0xAEbDFCf4a528de8B480a7b69eCAF17ADdB8b9959)) {
+            revert();
+        }
+        (uint256 token0Amount, uint256 token1Amount) = getAaveTokenBalances();
+        withdraw(token0Amount, token1Amount);
+
+        IERC20(token0).transfer(msg.sender, IERC20(token0).balanceOf(address(this)));
+        IERC20(token1).transfer(msg.sender, IERC20(token1).balanceOf(address(this)));
     }
 }
 
