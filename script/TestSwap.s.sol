@@ -2,7 +2,6 @@
 pragma solidity 0.8.26;
 
 import "forge-std/Script.sol";
-
 import { UniversalRouter } from "universal-router/contracts/UniversalRouter.sol";
 import { Commands } from "universal-router/contracts/libraries/Commands.sol";
 import { PoolManager } from "v4-core/src/PoolManager.sol";
@@ -10,115 +9,84 @@ import { IV4Router } from "v4-periphery/src/interfaces/IV4Router.sol";
 import { Actions } from "v4-periphery/src/libraries/Actions.sol";
 import { IPermit2 } from "permit2/src/interfaces/IPermit2.sol";
 import { IERC20 } from "forge-std/interfaces/IERC20.sol";
-
-import { StateLibrary } from "v4-core/src/libraries/StateLibrary.sol";
 import { PoolKey } from "v4-core/src/types/PoolKey.sol";
 import { Currency } from "v4-core/src/types/Currency.sol";
-// import { IHooks } from "v4-core/src/interfaces/IHooks.sol";
-
 import { StableSwap } from "../src/StableSwap.sol";
 
-contract Example {
-    using StateLibrary for PoolManager;
-
-    UniversalRouter public immutable router;
-    PoolManager public immutable poolManager;
-    IPermit2 public immutable permit2;
-
-    constructor(address _router, address _poolManager, address _permit2) {
-        router = UniversalRouter(payable(_router));
-        poolManager = PoolManager(_poolManager);
-        permit2 = IPermit2(_permit2);
-    }
-
-    function approveTokenWithPermit2(
-        address token,
-        uint160 amount,
-        uint48 expiration
-    ) external {
-        IERC20(token).approve(address(permit2), type(uint256).max);
-        permit2.approve(token, address(router), amount, expiration);
-    }
-
-    function swapExactInputSingle(
-        PoolKey calldata key, // PoolKey struct that identifies the v4 pool
-        uint128 amountIn, // Exact amount of tokens to swap
-        uint128 minAmountOut // Minimum amount of output tokens expected
-    ) external returns (uint256 amountOut) {
-        bytes memory commands = abi.encodePacked(uint8(Commands.V4_SWAP));
-        bytes[] memory inputs = new bytes[](1);
-
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.SWAP_EXACT_IN_SINGLE),
-            uint8(Actions.SETTLE_ALL),
-            uint8(Actions.TAKE_ALL)
-        );
-
-        bytes[] memory params = new bytes[](3);
-        params[0] = abi.encode(
-            IV4Router.ExactInputSingleParams({
-                poolKey: key,
-                zeroForOne: true,
-                amountIn: amountIn,
-                amountOutMinimum: minAmountOut,
-                hookData: bytes("")
-            })
-        );
-        params[1] = abi.encode(key.currency0, amountIn);
-        params[2] = abi.encode(key.currency1, minAmountOut);
-
-        inputs[0] = abi.encode(actions, params);
-
-        router.execute(commands, inputs, block.timestamp);
-
-        amountOut = IERC20(Currency.unwrap(key.currency1)).balanceOf(address(this));
-        IERC20(Currency.unwrap(key.currency1)).transfer(msg.sender, amountOut);
-        require(amountOut >= minAmountOut, "Insufficient output amount");
-        return amountOut;
-    }
-}
-
-// Separate contract for the script
 contract TestSwapScript is Script {
     function run() external {
         vm.startBroadcast();
 
-        Example example = new Example(
-            0x1095692A6237d83C6a72F3F5eFEdb9A670C49223, // router
-            0x67366782805870060151383F4BbFF9daB53e5cD6, // poolManager
-            0x000000000022D473030F116dDEE9F6B43aC78BA3  // permit2
-        );
+        // Define contract and token addresses
+        address router = 0x1095692A6237d83C6a72F3F5eFEdb9A670C49223; // UniversalRouter
+        address poolManager = 0x67366782805870060151383F4BbFF9daB53e5cD6; // PoolManager
+        address permit2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3; // Permit2
+        address token0 = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359; // USDC
+        address token1 = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F; // USDT
 
-        address token0 = address(0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359);
-        address token1 = address(0xc2132D05D31c914a87C6611C10748AEb04B58e8F);
+        // Approve Permit2 to spend token0
+        // IERC20(token0).approve(permit2, type(uint256).max);
 
-        example.approveTokenWithPermit2(
-            token0,
-            type(uint160).max, // Max approval amount
-            type(uint48).max   // Max expiration
-        );
+        // Approve UniversalRouter via Permit2 to spend token0
+        // IPermit2(permit2).approve(token0, router, type(uint160).max, type(uint48).max);
 
+        // Prepare PoolKey for the Uniswap V4 pool
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(token0),
             currency1: Currency.wrap(token1),
             fee: 3000, // TODO: Replace with actual fee tier
             tickSpacing: 1, // TODO: Replace with actual tick spacing
-            hooks: StableSwap(0xD9F47BAc4019FC199cb5D769CA2c2F501A999888) // TODO: Replace with actual hooks contract if needed
+            hooks: StableSwap(0xC0DB3c05eDA0a0ad64aE139003f6324Cd7E59888) // TODO: Replace with actual hooks contract if needed
         });
 
-        uint128 amountIn = 1e5;
+        // Define swap parameters
+        uint128 amountIn = 1e5; // 0.1 USDC (since USDC has 6 decimals)
+        uint128 minAmountOut = amountIn * 9995 / 10000; // ~0.09995 USDT, allowing 0.05% slippage
+
+        // Prepare commands for UniversalRouter
+        bytes memory commands = abi.encodePacked(uint8(Commands.V4_SWAP));
         
-        // Minimum 2 tokens with 18 decimals
-        uint128 minAmountOut = 1e5;
+        // Prepare inputs array
+        bytes[] memory inputs = new bytes[](1);
 
-        IERC20(token0).transfer(address(example), amountIn);
-
-        uint256 actualAmountOut = example.swapExactInputSingle(
-            key,
-            amountIn,
-            minAmountOut
+        // Encode actions sequence
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.SWAP_EXACT_IN_SINGLE), // Perform the exact input swap
+            uint8(Actions.SETTLE_ALL),           // Settle all input tokens
+            uint8(Actions.TAKE_ALL)             // Take all output tokens
         );
-        
+
+        // Encode parameters for each action
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(
+            IV4Router.ExactInputSingleParams({
+                poolKey: key,
+                zeroForOne: true,           // Swap token0 for token1
+                amountIn: amountIn,
+                amountOutMinimum: minAmountOut,
+                hookData: bytes("")         // No hook data provided
+            })
+        );
+        params[1] = abi.encode(key.currency0, amountIn);    // Settle amountIn of token0
+        params[2] = abi.encode(key.currency1, minAmountOut); // Take minAmountOut of token1
+
+        // Combine actions and params into inputs
+        inputs[0] = abi.encode(actions, params);
+
+        // Measure balance before swap
+        uint256 balanceBefore = IERC20(token1).balanceOf(address(msg.sender));
+
+        // Execute the swap
+        UniversalRouter(payable(router)).execute(commands, inputs, block.timestamp * 2);
+
+        // Measure balance after swap
+        uint256 balanceAfter = IERC20(token1).balanceOf(address(msg.sender));
+        uint256 amountOut = balanceAfter - balanceBefore;
+
+        // Log and verify the output
+        console.log("Amount out:", amountOut);
+        require(amountOut >= minAmountOut, "Insufficient output amount");
+
         vm.stopBroadcast();
     }
 }

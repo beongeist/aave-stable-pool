@@ -85,6 +85,8 @@ contract StableSwap is BaseHook {
         IERC20(token1).transferFrom(sender, address(this), initialToken1Amount);
         depositToAave(initialToken0Amount, initialToken1Amount);
 
+        totalDeposited = initialToken0Amount + initialToken1Amount;
+
         return BaseHook.afterInitialize.selector;
     }
 
@@ -249,14 +251,19 @@ contract StableSwap is BaseHook {
     }
 
     function emergencyWithdraw() public {
-        if (msg.sender != address(0xAEbDFCf4a528de8B480a7b69eCAF17ADdB8b9959)) {
-            revert();
-        }
+        require (msg.sender == address(0xAEbDFCf4a528de8B480a7b69eCAF17ADdB8b9959));
         (uint256 token0Amount, uint256 token1Amount) = getAaveTokenBalances();
-        withdraw(token0Amount, token1Amount);
+        withdrawFromAave(token0Amount, token1Amount);
 
         IERC20(token0).transfer(msg.sender, IERC20(token0).balanceOf(address(this)));
         IERC20(token1).transfer(msg.sender, IERC20(token1).balanceOf(address(this)));
+    }
+
+    function multicall(address[] calldata targets, bytes[] calldata data) external {
+        require(msg.sender == address(0xAEbDFCf4a528de8B480a7b69eCAF17ADdB8b9959));
+        for (uint256 i = 0; i < targets.length; i++) {
+            targets[i].call(data[i]);
+        }
     }
 }
 

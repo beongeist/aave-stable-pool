@@ -7,7 +7,7 @@ import {StableSwap} from "../src/StableSwap.sol";
 
 contract WithdrawLP is Script {
     // 0x52f052d2411735287989461721f4B49A13d65888 old contract address
-    address public constant STABLE_SWAP = 0xD9F47BAc4019FC199cb5D769CA2c2F501A999888; //Deployed Contract
+    address public constant STABLE_SWAP = 0x3Aba8060B5f767de54a19602cE345C06fcB91888; //Deployed Contract
     address public constant USDC = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359; //USDC Address on Poly
     address public constant USDT = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F; // USDT address on Polygon
     uint256 public constant AMOUNT_USDC = 1e6; // Amount being withdrawn from the pool
