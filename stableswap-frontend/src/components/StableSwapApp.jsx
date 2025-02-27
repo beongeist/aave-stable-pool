@@ -540,14 +540,8 @@ export default function StableSwapApp() {
       // Encode parameters with proper type handling
       const params = [
         ethers.utils.defaultAbiCoder.encode(
-          ["(address, address, uint24, int24, address)", "bool", "uint128", "uint128", "bytes"],
-          [
-            [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks],
-            true,
-            amountIn,  // Ensure proper conversion
-            minAmountOut,  // Ensure proper conversion
-            []
-          ]
+          ["tuple(tuple(address, address, uint24, int24, address) poolKey, bool zeroForOne, uint128 amountIn, uint128 minAmountOut, bytes hookData)"],
+          [{ poolKey: [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks], zeroForOne: true, amountIn, minAmountOut, hookData: [] }]
         ),
         ethers.utils.defaultAbiCoder.encode(
           ["address", "uint128"],
