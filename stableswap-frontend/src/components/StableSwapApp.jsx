@@ -325,6 +325,107 @@ export default function StableSwapApp() {
       setIsLoading(false);
     }
   }
+
+  async function handleWithdrawAll() {
+    if (!stableSwapContract) {
+      setTransactionStatus("Contract not initialized");
+      return;
+    }
+  
+    try {
+      setIsLoading(true);
+  
+      // Get user's share balance
+      const userShares = await stableSwapContract.tokenShares(account);
+      if (userShares.isZero()) {
+        setTransactionStatus("Error: No LP tokens to withdraw");
+        setIsLoading(false);
+        return;
+      }
+  
+      // Calculate the amount of tokens to withdraw based on user's share
+      const [aaveToken0Balance, aaveToken1Balance] = await stableSwapContract.getAaveTokenBalances();
+      const totalSharesAmount = await stableSwapContract.totaltokenSharesAmount();
+  
+      const token0Amount = aaveToken0Balance.mul(userShares).div(totalSharesAmount);
+      const token1Amount = aaveToken1Balance.mul(userShares).div(totalSharesAmount);
+  
+      // Withdraw tokens
+      setTransactionStatus("Withdrawing all LP tokens...");
+      const withdrawTx = await stableSwapContract.withdraw(token0Amount, token1Amount);
+      setTransactionStatus(`Withdrawal pending... Transaction: ${withdrawTx.hash}`);
+      await withdrawTx.wait();
+  
+      setTransactionStatus(`Withdrawal successful!`);
+      setWithdrawToken0Amount("");
+      setWithdrawToken1Amount("");
+  
+      // Refresh balances
+      await refreshBalances();
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error during withdrawal:", error);
+  
+      // Handle common error message for insufficient balance
+      let shortErrorMessage = error.message.includes("user rejected") 
+        ? "Transaction Cancelled"
+        : error.message;
+  
+      setTransactionStatus(`Error: ${shortErrorMessage}`);
+      setIsLoading(false);
+    }
+  }
+
+  // Add these functions to handle partial withdrawals
+  async function handleWithdrawPercentage(percentage) {
+    if (!stableSwapContract) {
+      setTransactionStatus("Contract not initialized");
+      return;
+    }
+  
+    try {
+      setIsLoading(true);
+  
+      // Get user's share balance
+      const userShares = await stableSwapContract.tokenShares(account);
+      if (userShares.isZero()) {
+        setTransactionStatus("Error: No LP tokens to withdraw");
+        setIsLoading(false);
+        return;
+      }
+  
+      // Calculate the amount of tokens to withdraw based on user's share and percentage
+      const [aaveToken0Balance, aaveToken1Balance] = await stableSwapContract.getAaveTokenBalances();
+      const totalSharesAmount = await stableSwapContract.totaltokenSharesAmount();
+  
+      const token0Amount = aaveToken0Balance.mul(userShares).mul(percentage).div(100).div(totalSharesAmount);
+      const token1Amount = aaveToken1Balance.mul(userShares).mul(percentage).div(100).div(totalSharesAmount);
+  
+      // Withdraw tokens
+      setTransactionStatus(`Withdrawing ${percentage}% of LP tokens...`);
+      const withdrawTx = await stableSwapContract.withdraw(token0Amount, token1Amount);
+      setTransactionStatus(`Withdrawal pending... Transaction: ${withdrawTx.hash}`);
+      await withdrawTx.wait();
+  
+      setTransactionStatus(`Withdrawal successful!`);
+      setWithdrawToken0Amount("");
+      setWithdrawToken1Amount("");
+  
+      // Refresh balances
+      await refreshBalances();
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error during withdrawal:", error);
+  
+      // Handle common error message for insufficient balance
+      let shortErrorMessage = error.message.includes("user rejected") 
+        ? "Transaction Cancelled"
+        : error.message;
+  
+      setTransactionStatus(`Error: ${shortErrorMessage}`);
+      setIsLoading(false);
+    }
+  }
   
   // Handle token swap
   async function handleSwap() {
@@ -504,16 +605,16 @@ export default function StableSwapApp() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <h3 className="font-medium">Pool Balances:</h3>
-            <p>{poolToken0Balance} {token0Symbol}</p>
-            <p>{poolToken1Balance} {token1Symbol}</p>
+            <p>{Math.floor(parseFloat(poolToken0Balance) * 1000) / 1000} {token0Symbol}</p>
+            <p>{Math.floor(parseFloat(poolToken1Balance) * 1000) / 1000} {token1Symbol}</p>
           </div>
           <div>
             <h3 className="font-medium">Your Position:</h3>
             <p>
-              {userShareBalance} shares ({userSharePercentage}% of pool)
+              {Math.floor(parseFloat(userShareBalance) * 1000000) / 1000000} shares ({Math.floor(parseFloat(userSharePercentage) * 100) / 100}% of pool)
             </p>
-            <p>≈ {userToken0InPool} {token0Symbol}</p>
-            <p>≈ {userToken1InPool} {token1Symbol}</p>
+            <p>≈ {Math.floor(parseFloat(userToken0InPool) * 1000) / 1000} {token0Symbol}</p>
+            <p>≈ {Math.floor(parseFloat(userToken1InPool) * 1000) / 1000} {token1Symbol}</p>
           </div>
         </div>
       </div>
@@ -522,11 +623,11 @@ export default function StableSwapApp() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div className="bg-gray-50 p-4 rounded-lg">
           <h3 className="font-medium">Your {token0Symbol} Balance:</h3>
-          <p className="text-xl font-semibold">{userToken0Balance}</p>
+          <p className="text-xl font-semibold">{Math.floor(parseFloat(userToken0Balance) * 1000) / 1000}</p>
         </div>
         <div className="bg-gray-50 p-4 rounded-lg">
           <h3 className="font-medium">Your {token1Symbol} Balance:</h3>
-          <p className="text-xl font-semibold">{userToken1Balance}</p>
+          <p className="text-xl font-semibold">{Math.floor(parseFloat(userToken1Balance) * 1000) / 1000}</p>
         </div>
       </div>
       
@@ -597,6 +698,39 @@ export default function StableSwapApp() {
             disabled={isLoading}
           >
             Withdraw
+          </button>
+        </div>
+
+        {/* Withdraw All Liquidity */}
+        <div className="bg-white border p-4 rounded-lg shadow-sm">
+          <h2 className="text-lg font-semibold mb-3">Withdraw % Liquidity</h2>
+          <button
+            className="w-full bg-red-500 text-white py-2 rounded hover:bg-red-600 mb-2"
+            onClick={() => handleWithdrawPercentage(100)}
+            disabled={isLoading}
+          >
+            Withdraw 100%
+          </button>
+          <button
+            className="w-full bg-red-500 text-white py-2 rounded hover:bg-red-600 mb-2"
+            onClick={() => handleWithdrawPercentage(50)}
+            disabled={isLoading}
+          >
+            Withdraw 50%
+          </button>
+          <button
+            className="w-full bg-red-500 text-white py-2 rounded hover:bg-red-600 mb-2"
+            onClick={() => handleWithdrawPercentage(25)}
+            disabled={isLoading}
+          >
+            Withdraw 25%
+          </button>
+          <button
+            className="w-full bg-red-500 text-white py-2 rounded hover:bg-red-600"
+            onClick={() => handleWithdrawPercentage(10)}
+            disabled={isLoading}
+          >
+            Withdraw 10%
           </button>
         </div>
         
