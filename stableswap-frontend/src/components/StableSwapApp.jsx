@@ -438,72 +438,268 @@ export default function StableSwapApp() {
   
     try {
       setIsLoading(true);
-  
-      // Define tokens
-      const token0 = new CoreToken(137, token0Address, token0Decimals, token0Symbol);
-      const token1 = new CoreToken(137, token1Address, token1Decimals, token1Symbol);
-      console.log("Tokens Initialized: 13777");
+      // Setup provider and signer
+    //   const provider = new ethers.providers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
+    //   const signer = new ethers.Wallet(process.env.USER_PRIVATE_KEY!, provider);
+      const signerAddress = await signer.getAddress();
 
-      // Fetch the current pool state to get sqrtRatioX96, liquidity, and tickCurrent
-    //   const poolState = await stableSwapContract.getPoolState();
-    //   const { sqrtRatioX96, liquidity, tickCurrent } = poolState;
+      // Correct Sepolia V4 contract addresses
+      const ADDRESSES = {
+        USDC: token0Address,
+        USDT: token1Address,
+        UNIVERSAL_ROUTER: "0x1095692A6237d83C6a72F3F5eFEdb9A670C49223",
+        POOL_MANAGER: "0x67366782805870060151383F4BbFF9daB53e5cD6",
+        PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+      };
 
-      // Define pool
-      const pool = new Pool(
-        //TODO:
+      // Initialize contracts
+      const usdcContract = new ethers.Contract(
+        ADDRESSES.USDC,
+        [
+          "function decimals() external view returns (uint8)",
+          "function balanceOf(address account) external view returns (uint256)",
+          "function approve(address spender, uint256 amount) external returns (bool)"
+        ],
+        signer
       );
-      console.log("Pool Initialized:");
 
-      // Define route
-      const route = new Route([pool], token0, token1);
-  
-      // Define trade
-      const amountIn = CurrencyAmount.fromRawAmount(token0, ethers.utils.parseUnits(swapAmount, token0Decimals).toString());
-      const trade = Trade.exactIn(route, amountIn);
-  
-      // Define slippage tolerance
-      const slippageTolerance = new Percent('50', '10000'); // 0.5%
-  
-      // Define minimum amount out
-      const amountOutMin = trade.minimumAmountOut(slippageTolerance).toExact();
-  
-      // Approve tokens for swap
-      console.log("Approving tokens for swap...");
-      const allowance = await token0Contract.allowance(account, stableSwapAddress);
-      if (allowance.lt(amountIn.raw)) {
-        setTransactionStatus("Approving tokens for swap...");
-        const approveTx = await token0Contract.approve(stableSwapAddress, amountIn.raw);
-        await approveTx.wait();
+      const permit2Contract = new ethers.Contract(
+        ADDRESSES.PERMIT2,
+        ["function approve(address token, address spender, uint160 amount, uint48 expiration) external"],
+        signer
+      );
+
+      // Get USDC decimals and format amount
+      const usdcDecimals = await usdcContract.decimals();
+      const amountIn = ethers.utils.parseUnits(swapAmount, usdcDecimals);
+
+      // Check USDC balance
+      const usdcBalance = await usdcContract.balanceOf(signerAddress);
+      if (usdcBalance.lt(amountIn)) {
+        throw new Error(
+          `Insufficient USDC balance. Have: ${ethers.utils.formatUnits(usdcBalance, usdcDecimals)}, Need: ${args.amount}`
+        );
       }
+
+      // Approve USDC for Permit2 with exact amount needed
+      console.log("Approving USDC for Permit2...");
+      const approveTx = await usdcContract.approve(ADDRESSES.PERMIT2, amountIn);
+      await approveTx.wait();
+
+      // Approve Universal Router via Permit2 with exact amount
+      console.log("Setting up Permit2 approval for Universal Router...");
+      const PERMIT2_EXPIRATION = 2592000; // 30 days in seconds
+      const permit2Tx = await permit2Contract.approve(
+        ADDRESSES.USDC,
+        ADDRESSES.UNIVERSAL_ROUTER,
+        amountIn,  // Use exact amount instead of MaxUint256
+        PERMIT2_EXPIRATION
+      );
+      await permit2Tx.wait();
+
+      // Calculate minimum amount out based on slippage
+      const minAmountOut =  amountIn.mul(9995).div(10000);
+
+      // Create pool key
+      const poolKey = {
+        currency0: ADDRESSES.USDC,
+        currency1: ADDRESSES.USDT,
+        fee: 500, // 0.3% fee tier
+        tickSpacing: 60,
+        hooks: stableSwapAddress
+      };
+
+      // Initialize Universal Router contract
+      const universalRouter = new ethers.Contract(
+        ADDRESSES.UNIVERSAL_ROUTER,
+        ["function execute(bytes calldata commands, bytes[] calldata inputs, uint256 deadline) external payable"],
+        signer
+      );
+
+      // Encode V4 swap commands
+      const commands = ethers.utils.hexlify(0x3593564c);   // V4_SWAP command
+      console.log("V4Commands Encoded:", commands);
+
+      // Encode actions
+      const actions = ethers.utils.solidityPack(
+        ["uint8", "uint8", "uint8"],
+        [1, 2, 3]  // SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL
+      );
+
+      // Encode parameters with proper type handling
+      const params = [
+        ethers.utils.defaultAbiCoder.encode(
+          ["tuple(address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks)", "bool", "uint128", "uint128", "uint160", "bytes"],
+          [
+            [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks],
+            true,
+            ethers.BigNumber.from(amountIn).toString(),  // Ensure proper conversion
+            ethers.BigNumber.from(minAmountOut).toString(),  // Ensure proper conversion
+            0,
+            "0x"
+          ]
+        ),
+        ethers.utils.defaultAbiCoder.encode(
+          ["address", "uint256"],
+          [ADDRESSES.USDC, ethers.BigNumber.from(amountIn).toString()]
+        ),
+        ethers.utils.defaultAbiCoder.encode(
+          ["address", "uint256"],
+          [ADDRESSES.USDT, ethers.BigNumber.from(minAmountOut).toString()]
+        )
+      ];
+
+      // Combine into inputs
+      const inputs = [ethers.utils.defaultAbiCoder.encode(["bytes", "bytes[]"], [actions, params])];
+
+      // Execute swap
+      console.log("Executing swap via Universal Router...");
+      const tx = await universalRouter.execute(
+        commands,
+        inputs,
+        Math.floor(Date.now() / 1000) + 1200,  // 20 minute deadline
+        {
+          gasLimit: 500000,
+          type: 2,
+          maxFeePerGas: ethers.utils.parseUnits("50", "gwei"),
+          maxPriorityFeePerGas: ethers.utils.parseUnits("2", "gwei")
+        }
+      );
+
+      const receipt = await tx.wait();
+
+
+
+    //   // Define tokens
+    //   const token0 = new CoreToken(1, token0Address, token0Decimals, token0Symbol);
+    //   const token1 = new CoreToken(1, token1Address, token1Decimals, token1Symbol);
+    //   console.log("Tokens Initialized: 13777");
   
-    // Execute swap using Universal Router
-    setTransactionStatus("Swapping tokens...");
-    
-    // Define the Universal Router contract address (replace with actual address)
-    const universalRouterAddress = "0x1095692A6237d83C6a72F3F5eFEdb9A670C49223";
-    
-    // Define the Universal Router ABI (simplified for this example)
-    const UNIVERSAL_ROUTER_ABI = [
-      "function execute(bytes[] calldata commands, bytes[] calldata inputs) payable returns (bytes[] memory results)"
-    ];
-    
-    // Initialize the Universal Router contract
-    const universalRouterContract = new ethers.Contract(universalRouterAddress, UNIVERSAL_ROUTER_ABI, signer);
-    
-    // Define the swap command and input
-    const commands = [
-      ethers.utils.hexlify(0x00) // Swap command (replace with actual command byte)
-    ];
-    const inputs = [
-      ethers.utils.defaultAbiCoder.encode(
-        ["address", "address", "uint256", "uint256", "address", "uint256"],
-        [token0Address, token1Address, amountIn.raw, ethers.utils.parseUnits(amountOutMin, token1Decimals), account, Math.floor(Date.now() / 1000) + 60 * 20]
-      )
-    ];
-    
-    // Execute the swap
-    const swapTx = await universalRouterContract.execute(commands, inputs);
-    await swapTx.wait();
+    //   // Define PoolKey
+    //   const poolKey = {
+    //     currency0: token0.address, // Use address directly
+    //     currency1: token1.address, // Use address directly
+    //     fee: 3000, // Example fee tier, replace with actual fee tier
+    //     tickSpacing: 1, // Example tick spacing, replace with actual tick spacing
+    //     hooks: stableSwapAddress // Example hooks contract, replace with actual hooks contract if needed
+    //   };
+    //   console.log("PoolKey Initialized:");
+  
+    //   // Define swap parameters
+    //   const amountIn = ethers.utils.parseUnits(swapAmount, token0Decimals);
+    //   const minAmountOut = amountIn.mul(9995).div(10000); // Allowing 0.05% slippage
+  
+    //   // Approve tokens for swap
+    //   console.log("Approving tokens for swap...");
+    //   const allowance = await token0Contract.allowance(account, stableSwapAddress);
+    //   if (allowance.lt(amountIn)) {
+    //     setTransactionStatus("Approving tokens for swap...");
+    //     const approveTx = await token0Contract.approve(stableSwapAddress, amountIn);
+    //     await approveTx.wait();
+    //   }
+  
+    //   // Define the Universal Router contract address (replace with actual address)
+    //   const universalRouterAddress = "0x1095692A6237d83C6a72F3F5eFEdb9A670C49223";
+  
+    //   // Define the Universal Router ABI (simplified for this example)
+    // //   const UNIVERSAL_ROUTER_ABI = [
+    // //     "function execute(bytes[] calldata commands, bytes[] calldata inputs) payable returns (bytes[] memory results)"
+    // //   ];
+
+    //   const universalRouterContract = new ethers.Contract(
+    //     universalRouterAddress,
+    //     ["function execute(bytes calldata commands, bytes[] calldata inputs, uint256 deadline) external payable"],
+    //     signer
+    //   );
+  
+    // //   // Initialize the Universal Router contract
+    // //   const universalRouterContract = new ethers.Contract(universalRouterAddress, UNIVERSAL_ROUTER_ABI, signer);
+    // //   console.log("Universal Router Initialized:");
+  
+    //   // Prepare commands for UniversalRouter
+    //   const commands = ethers.utils.hexlify(0x3593564c); // Swap command (replace with actual command byte)
+    //   console.log(token0Address);
+  
+    //   // Encode actions sequence
+    //   const actions = ethers.utils.defaultAbiCoder.encode(
+    //     ["uint8", "uint8", "uint8"],
+    //     [0, 1, 2] // Actions: SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL
+    //   );
+    //   console.log("Actions Encoded:");
+    //   // Encode parameters with proper type handling
+    //   const params = [
+    //     ethers.utils.defaultAbiCoder.encode(
+    //       ["tuple(address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks)", "bool", "uint128", "uint128", "uint160", "bytes"],
+    //       [
+    //         [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks],
+    //         true,
+    //         ethers.BigNumber.from(amountIn).toString(),  // Ensure proper conversion
+    //         ethers.BigNumber.from(minAmountOut).toString(),  // Ensure proper conversion
+    //         0,
+    //         "0x"
+    //       ]
+    //     ),
+    //     ethers.utils.defaultAbiCoder.encode(
+    //       ["address", "uint256"],
+    //       [token0Address, ethers.BigNumber.from(amountIn).toString()]
+    //     ),
+    //     ethers.utils.defaultAbiCoder.encode(
+    //       ["address", "uint256"],
+    //       [token1Address, ethers.BigNumber.from(minAmountOut).toString()]
+    //     )
+    //   ];
+    //   console.log("Params Encoded:");
+      
+    // //   // Encode parameters for each action
+    // //   const params = [
+    // //     ethers.utils.defaultAbiCoder.encode(
+    // //       ["address", "address", "uint256", "uint256", "address", "uint256"],
+    // //       [token0Address, token1Address, amountIn, minAmountOut, account, Math.floor(Date.now() / 1000) + 60 * 20]
+    // //     ),
+    // //     ethers.utils.defaultAbiCoder.encode(["address", "uint256"], [token0Address, amountIn]),
+    // //     ethers.utils.defaultAbiCoder.encode(["address", "uint256"], [token1Address, minAmountOut])
+    // //   ];
+  
+    //   // Combine actions and params into inputs
+    //   const inputs = [ethers.utils.defaultAbiCoder.encode(["bytes", "bytes[]"], [actions, params])];
+    //   console.log("Inputs Encoded:");
+    //   // Measure balance before swap
+    //   const balanceBefore = await token1Contract.balanceOf(account);
+  
+    //   // Execute the swap
+    //   setTransactionStatus("Swapping tokens...");
+
+
+    //   console.log("Executing swap via Universal Router...");
+    //   const tx = await universalRouterContract.execute(
+    //     commands,
+    //     inputs,
+    //     Math.floor(Date.now() / 1000) + 1200,  // 20 minute deadline
+    //     {
+    //       gasLimit: 500000,
+    //       type: 2,
+    //       maxFeePerGas: ethers.utils.parseUnits("50", "gwei"),
+    //       maxPriorityFeePerGas: ethers.utils.parseUnits("2", "gwei")
+    //     }
+    //   );
+
+    //   const receipt = await tx.wait();
+
+
+
+    //   const swapTx = await universalRouterContract.execute([commands], inputs);
+    //   console.log("Swap Transaction Executed:");
+    //   await swapTx.wait();
+  
+    //   // Measure balance after swap
+    //   const balanceAfter = await token1Contract.balanceOf(account);
+    //   const amountOut = balanceAfter.sub(balanceBefore);
+  
+    //   // Log and verify the output
+    //   console.log("Amount out:", amountOut.toString());
+    //   if (amountOut.lt(minAmountOut)) {
+    //     throw new Error("Insufficient output amount");
+    //   }
   
       setTransactionStatus("Swap successful!");
       setSwapAmount("");
