@@ -64,6 +64,7 @@ export default function StableSwapApp() {
   const [poolToken1Balance, setPoolToken1Balance] = useState("0");
   const [isLoading, setIsLoading] = useState(false);
   const [transactionStatus, setTransactionStatus] = useState("");
+  const [isExpanded, setIsExpanded] = useState(false);
   
   // Form state for user inputs
   const [depositToken0Amount, setDepositToken0Amount] = useState("");
@@ -145,6 +146,7 @@ export default function StableSwapApp() {
       }
     } catch (error) {
       console.error("Error initializing Web3:", error);
+
       setTransactionStatus(`Error: ${error.message}`);
     }
   }
@@ -267,7 +269,13 @@ export default function StableSwapApp() {
       setIsLoading(false);
     } catch (error) {
       console.error("Error during deposit:", error);
-      setTransactionStatus(`Deposit failed: ${error.message}`);
+      // Handle common error message for insufficient balance
+      let shortErrorMessage = error.message.includes("ERC20: transfer amount exceeds balance") 
+        ? "Deposit amount exceeds balance"
+        : error.message;
+
+      setTransactionStatus(`Error: ${shortErrorMessage}`);
+
       setIsLoading(false);
     }
   }
@@ -307,7 +315,13 @@ export default function StableSwapApp() {
       setIsLoading(false);
     } catch (error) {
       console.error("Error during withdrawal:", error);
-      setTransactionStatus(`Withdrawal failed: ${error.message}`);
+
+      // Handle common error message for insufficient balance
+      let shortErrorMessage = error.message.includes("arithmetic") 
+        ? "Withdraw amount exceeds balance"
+        : error.message;
+
+      setTransactionStatus(`Error: ${shortErrorMessage}`);
       setIsLoading(false);
     }
   }
@@ -478,9 +492,9 @@ export default function StableSwapApp() {
       </div>
       
       {/* Transaction Status */}
-      {transactionStatus && (
-        <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg mb-4">
-          <p className="text-sm">{transactionStatus}</p>
+        {transactionStatus && (
+          <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg mb-4 max-h-24 overflow-y-auto">
+            <p className="text-sm whitespace-pre-wrap">{transactionStatus}</p>
         </div>
       )}
       
