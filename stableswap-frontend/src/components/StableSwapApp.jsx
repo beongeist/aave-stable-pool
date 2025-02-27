@@ -1,6 +1,8 @@
 // StableSwap Frontend using ethers.js
 import { ethers } from 'ethers';
 import { useState, useEffect } from 'react';
+import { Pool, Route, Trade } from '@uniswap/v4-sdk';
+import { Token as CoreToken, CurrencyAmount, Percent, TradeType } from '@uniswap/sdk-core';
 
 // ABI for the StableSwap contract (partial, based on the provided contract code)
 const STABLESWAP_ABI = [
@@ -429,60 +431,84 @@ export default function StableSwapApp() {
   
   // Handle token swap
   async function handleSwap() {
-    if (!provider || !signer) {
+    if (!provider || !signer || !token0Address || !token1Address) {
       setTransactionStatus("Web3 not initialized");
       return;
     }
-    
+  
     try {
       setIsLoading(true);
-      
-      // Get token addresses and contracts based on swap direction
-      const fromTokenAddress = swapFromToken === "token0" ? token0Address : token1Address;
-      const toTokenAddress = swapFromToken === "token0" ? token1Address : token0Address;
-      const fromTokenContract = swapFromToken === "token0" ? token0Contract : token1Contract;
-      const fromDecimals = swapFromToken === "token0" ? token0Decimals : token1Decimals;
-      
-      // Parse amount with proper decimals
-      const amountIn = ethers.utils.parseUnits(swapAmount, fromDecimals);
-      
+  
+      // Define tokens
+      const token0 = new CoreToken(137, token0Address, token0Decimals, token0Symbol);
+      const token1 = new CoreToken(137, token1Address, token1Decimals, token1Symbol);
+      console.log("Tokens Initialized: 13777");
+
+      // Fetch the current pool state to get sqrtRatioX96, liquidity, and tickCurrent
+    //   const poolState = await stableSwapContract.getPoolState();
+    //   const { sqrtRatioX96, liquidity, tickCurrent } = poolState;
+
+      // Define pool
+      const pool = new Pool(
+        //TODO:
+      );
+      console.log("Pool Initialized:");
+
+      // Define route
+      const route = new Route([pool], token0, token1);
+  
+      // Define trade
+      const amountIn = CurrencyAmount.fromRawAmount(token0, ethers.utils.parseUnits(swapAmount, token0Decimals).toString());
+      const trade = Trade.exactIn(route, amountIn);
+  
+      // Define slippage tolerance
+      const slippageTolerance = new Percent('50', '10000'); // 0.5%
+  
+      // Define minimum amount out
+      const amountOutMin = trade.minimumAmountOut(slippageTolerance).toExact();
+  
       // Approve tokens for swap
-      const allowance = await fromTokenContract.allowance(account, stableSwapAddress);
-      if (allowance.lt(amountIn)) {
+      console.log("Approving tokens for swap...");
+      const allowance = await token0Contract.allowance(account, stableSwapAddress);
+      if (allowance.lt(amountIn.raw)) {
         setTransactionStatus("Approving tokens for swap...");
-        const approveTx = await fromTokenContract.approve(stableSwapAddress, amountIn);
+        const approveTx = await token0Contract.approve(stableSwapAddress, amountIn.raw);
         await approveTx.wait();
       }
-      
-      // Construct swap parameters for Uniswap V4
-      const swapParams = {
-        zeroForOne: swapFromToken === "token0",
-        amountSpecified: -amountIn.toString(), // Negative for exact input
-        sqrtPriceLimitX96: 0 // No price limit
-      };
-      
-      // For a direct swap using the hook's beforeSwap function, we need to interact with the PoolManager
-      // This is a simplified example - in reality, we would need to use a router contract
-      // that's designed to work with Uniswap V4 and our hook
-      
-      // For this example, we'll use a placeholder transaction
-      setTransactionStatus("Swapping tokens...");
-      // const swapTx = await routerContract.exactInputSingle(
-      //   fromTokenAddress,
-      //   toTokenAddress,
-      //   amountIn,
-      //   0, // Minimum out
-      //   account // Recipient
-      // );
-      
-      // Placeholder for actual swap transaction
-      setTransactionStatus("Swap feature requires a custom Uniswap V4 router integration");
-      setTransactionStatus("Please use the Uniswap interface connected to this pool for swaps");
-      
-      // Reset form
+  
+    // Execute swap using Universal Router
+    setTransactionStatus("Swapping tokens...");
+    
+    // Define the Universal Router contract address (replace with actual address)
+    const universalRouterAddress = "0x1095692A6237d83C6a72F3F5eFEdb9A670C49223";
+    
+    // Define the Universal Router ABI (simplified for this example)
+    const UNIVERSAL_ROUTER_ABI = [
+      "function execute(bytes[] calldata commands, bytes[] calldata inputs) payable returns (bytes[] memory results)"
+    ];
+    
+    // Initialize the Universal Router contract
+    const universalRouterContract = new ethers.Contract(universalRouterAddress, UNIVERSAL_ROUTER_ABI, signer);
+    
+    // Define the swap command and input
+    const commands = [
+      ethers.utils.hexlify(0x00) // Swap command (replace with actual command byte)
+    ];
+    const inputs = [
+      ethers.utils.defaultAbiCoder.encode(
+        ["address", "address", "uint256", "uint256", "address", "uint256"],
+        [token0Address, token1Address, amountIn.raw, ethers.utils.parseUnits(amountOutMin, token1Decimals), account, Math.floor(Date.now() / 1000) + 60 * 20]
+      )
+    ];
+    
+    // Execute the swap
+    const swapTx = await universalRouterContract.execute(commands, inputs);
+    await swapTx.wait();
+  
+      setTransactionStatus("Swap successful!");
       setSwapAmount("");
       setSwapQuote("0");
-      
+  
       // Refresh balances after swap
       await refreshBalances();
       setIsLoading(false);
@@ -497,7 +523,7 @@ export default function StableSwapApp() {
   useEffect(() => {
     if (stableSwapAddress) {
       console.log("Initializing Web3 through useEffect...");  
-      initializeWeb3(); //Audit this Logic TODO
+      initializeWeb3(); //Audit
     }
   }, [stableSwapAddress]);
   
