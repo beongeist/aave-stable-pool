@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import "forge-std/Script.sol";
+import "forge-std/console.sol";
 import { UniversalRouter } from "universal-router/contracts/UniversalRouter.sol";
 import { Commands } from "universal-router/contracts/libraries/Commands.sol";
 import { PoolManager } from "v4-core/src/PoolManager.sol";
@@ -40,12 +41,14 @@ contract TestSwapScript is Script {
         });
 
         // Define swap parameters
-        uint128 amountIn = 1e5; // 0.1 USDC (since USDC has 6 decimals)
+        uint128 amountIn = 1e6; // 0.1 USDC (since USDC has 6 decimals)
         uint128 minAmountOut = amountIn * 9995 / 10000; // ~0.09995 USDT, allowing 0.05% slippage
 
         // Prepare commands for UniversalRouter
         bytes memory commands = abi.encodePacked(uint8(Commands.V4_SWAP));
-        
+        console.log("commands");
+        console.logBytes(commands);
+
         // Prepare inputs array
         bytes[] memory inputs = new bytes[](1);
 
@@ -55,6 +58,9 @@ contract TestSwapScript is Script {
             uint8(Actions.SETTLE_ALL),           // Settle all input tokens
             uint8(Actions.TAKE_ALL)             // Take all output tokens
         );
+
+        console.log("Actions");
+        console.logBytes(actions);
 
         // Encode parameters for each action
         bytes[] memory params = new bytes[](3);
@@ -70,8 +76,16 @@ contract TestSwapScript is Script {
         params[1] = abi.encode(key.currency0, amountIn);    // Settle amountIn of token0
         params[2] = abi.encode(key.currency1, minAmountOut); // Take minAmountOut of token1
 
+        console.log("Params");
+        console.logBytes(params[0]);
+        console.logBytes(params[1]);
+        console.logBytes(params[2]);
+
         // Combine actions and params into inputs
         inputs[0] = abi.encode(actions, params);
+
+        console.log("Inputs");
+        console.logBytes(inputs[0]);
 
         // Measure balance before swap
         uint256 balanceBefore = IERC20(token1).balanceOf(address(msg.sender));
