@@ -479,9 +479,9 @@ export default function StableSwapApp() {
       }
   
       // Approve input token for Permit2 with exact amount needed
-      console.log(`Approving ${swapFromToken === "token0" ? token0Symbol : token1Symbol} for Permit2...`);
-      const approveTx = await inputTokenContract.approve(ADDRESSES.PERMIT2, ethers.constants.MaxUint256);
-      await approveTx.wait();
+    //   console.log(`Approving ${swapFromToken === "token0" ? token0Symbol : token1Symbol} for Permit2...`);
+    //   const approveTx = await inputTokenContract.approve(ADDRESSES.PERMIT2, ethers.constants.MaxUint256);
+    //   await approveTx.wait();
   
       // Calculate minimum amount out based on slippage
       const minAmountOut = amountIn.mul(9995).div(10000);
