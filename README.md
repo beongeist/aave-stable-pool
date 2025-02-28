@@ -1,100 +1,72 @@
-# StableSwap Hook
+# StableSwap App
 ### **Uniswap v4 Hooks with StableSwap 🦄**
 
+##Try the App Here: [StableSwap](aave-stable-pool.vercel.app/)
+
+
+
+
+StableSwap is a decentralized liquidity and swapping platform that integrates **Uniswap V4** with **Aave yield strategies**, enabling liquidity providers (LPs) to maximize their earnings while offering efficient swaps.
+
+## Features
+
+### Liquidity Provision & Yield Maximization
+
+- **Deposit Liquidity**: Users can provide liquidity by depositing stablecoins (e.g., USDC and USDT).
+- **Earn Aave Interest**: Deposited funds are partially allocated to Aave, generating additional yield.
+- **Pool Fee Distribution**: LPs earn a share of swap fees from traders.
+- **Dynamic Yield Boost**: LPs can earn **up to 10% of the pool’s accumulated interest from Aave**, proportional to their swap activity.
+
+### Just-in-Time (JIT) Liquidity & Swaps
+
+- **Efficient Token Swaps**: Users can swap stablecoins via Uniswap V4.
+- **JIT Liquidity Mechanism**: Optimizes capital efficiency by providing liquidity only when swaps occur.
+- **Low Slippage & Competitive Pricing**: Uses Uniswap's AMM model to minimize slippage.
+
+### Advanced Withdrawal Mechanisms
+
+- **Partial & Full Withdrawals**: Users can withdraw a custom percentage (10%, 25%, 50%, or 100%) of their funds.
+- **Automated Share Calculation**: Ensures correct distribution of tokens based on LP shares.
+
+### User-Friendly Dashboard & Real-Time Updates
+
+- **Live Pool Data**: Displays pool balances, LP shares, and estimated earnings.
+- **Seamless Web3 Integration**: Connects directly to MetaMask for secure interactions.
+- **One-Click Permit2 Approval**: Simplifies token approvals for gas-efficient transactions.
+
+## How LPs Earn More Yield
+
+StableSwap enhances LP earnings through:
+
+1. **Aave Yield Sharing**: LPs receive **up to 10% of Aave-generated interest**, proportional to their swap volume.
+2. **Swap Fees**: Each trade generates fees, distributed among LPs.
+3. **JIT Liquidity Efficiency**: Reduces impermanent loss by providing liquidity at optimal times.
+
+## Getting Started
+
+### Prerequisites
+
+- Install [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/)
+- Install [MetaMask](https://metamask.io/) for Web3 connectivity
+
+### Installation
+
+```sh
+# Clone the repository
+git clone https://github.com/your-repo/aave-stable-pool.git
+
+# Navigate into the project directory
+cd aave-stable-pool
+
+# Install dependencies
+npm install
+
+#Running the Application
+npm run dev
+
+#Get Started on Your own V4 hook with the same template!
 [`Use this Template`](https://github.com/uniswapfoundation/v4-template/generate)
 
-1. The example hook [Counter.sol](src/Counter.sol) demonstrates the `beforeSwap()` and `afterSwap()` hooks
-2. The test template [Counter.t.sol](test/Counter.t.sol) preconfigures the v4 pool manager, test tokens, and test liquidity.
 
-<details>
-<summary>Updating to StableSwap Template:latest</summary>
-
-This template is actively maintained -- you can update the v4 dependencies, scripts, and helpers: 
-```bash
-git remote add template https://github.com/uniswapfoundation/v4-template
-git fetch template
-git merge template/main <BRANCH> --allow-unrelated-histories
-```
-
-</details>
-
----
-
-### Check Forge Installation
-*Ensure that you have correctly installed Foundry (Forge) Stable. You can update Foundry by running:*
-
-```
-foundryup
-```
-
-> *v4-template* appears to be _incompatible_ with Foundry Nightly. See [foundry announcements](https://book.getfoundry.sh/announcements) to revert back to the stable build
-
-
-
-## Set up
-
-*requires [foundry](https://book.getfoundry.sh)*
-
-```
-forge install
-forge test
-```
-
-### Local Development (Anvil)
-
-Other than writing unit tests (recommended!), you can only deploy & test hooks on [anvil](https://book.getfoundry.sh/anvil/)
-
-```bash
-# start anvil, a local EVM chain
-anvil
-
-# in a new terminal
-forge script script/Anvil.s.sol \
-    --rpc-url http://localhost:8545 \
-    --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
-    --broadcast
-```
-
-See [script/](script/) for hook deployment, pool creation, liquidity provision, and swapping.
-
----
-
-<details>
-<summary><h2>Troubleshooting</h2></summary>
-
-
-
-### *Permission Denied*
-
-When installing dependencies with `forge install`, Github may throw a `Permission Denied` error
-
-Typically caused by missing Github SSH keys, and can be resolved by following the steps [here](https://docs.github.com/en/github/authenticating-to-github/connecting-to-github-with-ssh) 
-
-Or [adding the keys to your ssh-agent](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent#adding-your-ssh-key-to-the-ssh-agent), if you have already uploaded SSH keys
-
-### Hook deployment failures
-
-Hook deployment failures are caused by incorrect flags or incorrect salt mining
-
-1. Verify the flags are in agreement:
-    * `getHookCalls()` returns the correct flags
-    * `flags` provided to `HookMiner.find(...)`
-2. Verify salt mining is correct:
-    * In **forge test**: the *deployer* for: `new Hook{salt: salt}(...)` and `HookMiner.find(deployer, ...)` are the same. This will be `address(this)`. If using `vm.prank`, the deployer will be the pranking address
-    * In **forge script**: the deployer must be the CREATE2 Proxy: `0x4e59b44847b379578588920cA78FbF26c0B4956C`
-        * If anvil does not have the CREATE2 deployer, your foundry may be out of date. You can update it with `foundryup`
-
-</details>
-
----
-
-Additional resources:
-
-[Uniswap v4 docs](https://docs.uniswap.org/contracts/v4/overview)
-
-[v4-periphery](https://github.com/uniswap/v4-periphery) contains advanced hook implementations that serve as a great reference
-
-[v4-core](https://github.com/uniswap/v4-core)
-
-[v4-by-example](https://v4-by-example.org)
-
+#License
+This project is licensed under the MIT License.
