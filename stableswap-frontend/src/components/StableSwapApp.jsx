@@ -75,6 +75,9 @@ export default function StableSwapApp() {
   const [swapAmount, setSwapAmount] = useState("");
   const [swapQuote, setSwapQuote] = useState("0");
   
+  // Prefill StableSwap contract address
+  const [inputStableSwapAddress, setInputStableSwapAddress] = useState("0xC0DB3c05eDA0a0ad64aE139003f6324Cd7E59888");
+
   // Initialize Web3 connection
   async function initializeWeb3() {
 
@@ -660,8 +663,6 @@ export default function StableSwapApp() {
     : "0";
   
   // UI for setting contract addresses (only shown when addresses not set)
-
-  const [inputStableSwapAddress, setInputStableSwapAddress] = useState(""); // Store Input StableSwap Hook Address
 
 
   if (!stableSwapAddress) {
