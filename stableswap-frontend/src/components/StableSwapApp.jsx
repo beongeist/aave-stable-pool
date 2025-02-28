@@ -1,8 +1,6 @@
 // StableSwap Frontend using ethers.js
 import { BigNumber, ethers } from 'ethers';
 import { useState, useEffect } from 'react';
-import { Pool, Route, Trade } from '@uniswap/v4-sdk';
-import { Token as CoreToken, CurrencyAmount, Percent, TradeType } from '@uniswap/sdk-core';
 
 // ABI for the StableSwap contract (partial, based on the provided contract code)
 const STABLESWAP_ABI = [
@@ -463,11 +461,6 @@ export default function StableSwapApp() {
         signer
       );
 
-      const permit2Contract = new ethers.Contract(
-        ADDRESSES.PERMIT2,
-        ["function approve(address token, address spender, uint160 amount, uint48 expiration) external"],
-        signer
-      );
 
       // Get USDC decimals and format amount
       const usdcDecimals = await usdcContract.decimals();
@@ -724,12 +717,72 @@ export default function StableSwapApp() {
       setIsLoading(false);
     }
   }
+
+  // Function to handle Permit2 approval
+  async function handleApprovePermit2() {
+    if (!provider || !signer || !token0Address) {
+      setTransactionStatus("Web3 not initialized");
+      return;
+    }
+  
+    try {
+      setIsLoading(true);
+      const signerAddress = await signer.getAddress();
+  
+      // Correct Sepolia V4 contract addresses
+      const ADDRESSES = {
+        USDC: token0Address,
+        UNIVERSAL_ROUTER: "0x1095692A6237d83C6a72F3F5eFEdb9A670C49223",
+        PERMIT2: "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+      };
+  
+      console.log("ADDRESSES:", ADDRESSES);
+  
+      // Initialize USDC contract
+      const usdcContract = new ethers.Contract(
+        ADDRESSES.USDC,
+        [
+          "function approve(address spender, uint256 amount) external returns (bool)"
+        ],
+        signer
+      );
+  
+      const permit2Contract = new ethers.Contract(
+        ADDRESSES.PERMIT2,
+        ["function approve(address token, address spender, uint160 amount, uint48 expiration) external"],
+        signer
+      );
+  
+      // Approve USDC for Permit2 with exact amount needed
+      console.log("Approving USDC for Permit2...");
+      const approveTx = await usdcContract.approve(ADDRESSES.PERMIT2, ethers.constants.MaxUint256);
+      await approveTx.wait();
+  
+      // Approve Universal Router via Permit2 with exact amount
+      console.log("Setting up Permit2 approval for Universal Router...");
+  
+      const permit2Tx = await permit2Contract.approve(
+        ADDRESSES.USDC,
+        ADDRESSES.UNIVERSAL_ROUTER,
+        (BigInt(1) << BigInt(160)) - BigInt(1),  // Use exact amount instead of MaxUint256
+        (BigInt(1) << BigInt(48)) - BigInt(1)
+      );
+      await permit2Tx.wait();
+  
+      setTransactionStatus("USDC approved for Permit2");
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error during Permit2 approval:", error);
+      setTransactionStatus(`Permit2 approval failed: ${error.message}`);
+      setIsLoading(false);
+    }
+  }
   
   // Set up initial connection
   useEffect(() => {
     if (stableSwapAddress) {
       console.log("Initializing Web3 through useEffect...");  
-      initializeWeb3(); //Audit
+      initializeWeb3(); 
     }
   }, [stableSwapAddress]);
   
@@ -1002,6 +1055,13 @@ export default function StableSwapApp() {
             disabled={isLoading || !swapAmount}
           >
             Swap
+          </button>
+          <button
+            className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600 mt-2"
+            onClick={handleApprovePermit2}
+            disabled={isLoading}
+          >
+            Approve Permit2
           </button>
         </div>
       </div>
